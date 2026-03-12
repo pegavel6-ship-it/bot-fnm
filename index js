@@ -1,0 +1,159 @@
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  PermissionsBitField,
+  ChannelType
+} = require("discord.js");
+
+const client = new Client({
+  intents:[
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
+  ]
+});
+
+// TOKEN do seu bot
+const TOKEN = process.env.TOKEN;
+
+// IDs dos canais
+const LOG_CHANNEL = "1328361844435587162";       // logs dos tickets
+const FEEDBACK_CHANNEL = "1461540155528581152";  // feedback do atendimento
+const TICKET_CATEGORY = "1328361844435587162";  // categoria dos tickets
+
+client.once("ready",()=>{
+  console.log("Bot FNM online!");
+});
+
+client.on("messageCreate", async(message)=>{
+  if(message.content === "!painel"){
+
+    const embed = new EmbedBuilder()
+      .setColor("#0099ff") // azul
+      .setDescription(`
+# Área de Atendimento
+
+ **Bem-vindo à central de suporte da [FNM — Federação Nacional Brasileira de Mamoball](https://discord.gg/yQ2Abrqxy)
+
+<a:Seta:1479697232235069500>Selecione uma das opções abaixo para receber assistência rápida da nossa equipe. Estamos aqui para ajudar!**
+`)
+      .setThumbnail("https://cdn.discordapp.com/attachments/1473562026067628053/1481131007280156873/file_000000002ffc720ebb8f6c7801c630fb.png")
+      .setImage("https://cdn.discordapp.com/attachments/1328420314794950670/1480912927761367172/2026-02-22-08-29-08-894.gif");
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("ticket_menu")
+      .setPlaceholder("📩 Escolha uma opção de atendimento")
+      .addOptions([
+        {label:"🚨 Denúncias",value:"denuncias"},
+        {label:"🎖️ Cargos",value:"cargos"},
+        {label:"❓ Dúvidas",value:"duvidas"},
+        {label:"🏆 Campeonatos",value:"campeonatos"}
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    message.channel.send({
+      embeds:[embed],
+      components:[row]
+    });
+
+  }
+});
+
+client.on("interactionCreate", async(interaction)=>{
+
+  if(interaction.isStringSelectMenu()){
+    await interaction.deferReply({ephemeral:true});
+
+    const canal = await interaction.guild.channels.create({
+      name:`ticket-${interaction.user.username}`,
+      type:ChannelType.GuildText,
+      parent:TICKET_CATEGORY,
+      permissionOverwrites:[
+        { id:interaction.guild.id, deny:[PermissionsBitField.Flags.ViewChannel] },
+        { id:interaction.user.id, allow:[
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ] 
+        }
+      ]
+    });
+
+    const fechar = new ButtonBuilder()
+      .setCustomId("fechar_ticket")
+      .setLabel("🔒 Fechar Ticket")
+      .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder().addComponents(fechar);
+
+    await canal.send({
+      content:`🎫 ${interaction.user}, seu ticket foi criado!`,
+      components:[row]
+    });
+
+    const log = interaction.guild.channels.cache.get(LOG_CHANNEL);
+    if(log) log.send(`📂 Ticket criado por ${interaction.user.tag}`);
+
+    await interaction.editReply(`✅ Seu ticket foi criado: ${canal}`);
+  }
+
+  if(interaction.isButton()){
+
+    if(interaction.customId === "fechar_ticket"){
+
+      await interaction.reply({
+        content:"🔒 Fechando ticket...",
+        ephemeral:true
+      });
+
+      // enviar avaliação para o privado
+      const estrelas = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("1_star").setLabel("⭐").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("2_star").setLabel("⭐⭐").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("3_star").setLabel("⭐⭐⭐").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("4_star").setLabel("⭐⭐⭐⭐").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("5_star").setLabel("⭐⭐⭐⭐⭐").setStyle(ButtonStyle.Secondary)
+      );
+
+      interaction.user.send({
+        content:"⭐ Avalie o atendimento da **FNM**:",
+        components:[estrelas]
+      });
+
+      setTimeout(()=>{ interaction.channel.delete(); },2000);
+    }
+
+    // Feedback
+    if(interaction.customId.includes("_star")){
+      const nota = interaction.customId.split("_")[0];
+
+      await interaction.reply({
+        content:"Obrigado pelo feedback!",
+        ephemeral:true
+      });
+
+      const canal = interaction.guild.channels.cache.get(FEEDBACK_CHANNEL);
+      if(canal){
+        const embed = new EmbedBuilder()
+          .setTitle("⭐ Nova Avaliação")
+          .setDescription(`
+Usuário: ${interaction.user}
+Avaliação: ${"⭐".repeat(nota)}
+          `)
+          .setColor("#0099ff");
+
+        canal.send({embeds:[embed]});
+      }
+    }
+
+  }
+
+});
+
+client.login(TOKEN);
